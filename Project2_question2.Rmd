@@ -1,0 +1,71 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+Author: Dean Taylor
+---
+
+```{r}
+setwd('C:/Users/Dean/Desktop/University of Idaho/Classes/Fall 2018/STAT 517/Stat517-master/Data')
+Mt = read.csv("C:/Users/Dean/Desktop/University of Idaho/Classes/Fall 2018/STAT 517/Stat517-master/Data/Mt1t.mutate.csv", sep = ',', header=T)
+Mt<-Mt[-c(1:3),]
+for (i in 2:ncol(Mt)){
+  Mt[is.na(Mt[,i]),i]<-median(Mt[,i],na.rm = TRUE)
+}
+```
+We're now going to preform a principle component analysis on this data set. 
+
+```{r}
+library(Matrix)
+dim(Mt)
+head(Mt[,-1])
+
+library(mice)
+library(corrplot)
+library(factoextra)
+library(FactoMineR)
+
+Mt.pca=prcomp(Mt[,-1],scale=FALSE)
+
+eig.val <- get_eigenvalue(Mt.pca) 
+eig.val
+fviz_eig(Mt.pca, addlabels = TRUE, ylim = c(0, 60), linecolor = "red", barfill = "darkblue", barcolor = "darkblue")
+```
+
+```{r}
+fviz_screeplot(Mt.pca,ncp=100,choice="eigenvalue")
+Classes<- factor(Mt$Group)
+plot(main="Different Groups",Mt.pca$x[,1:100],col=Classes)
+
+```
+From these two PCs it looks like there are at least 4 clear groups, with some toward the bottom that may be harder to group. This makes sense if we think of the major super groups as Africa, Europe, Asia, and South America. People from these groups should cluster depedning on their ancestry. 
+```{r}
+library(mclust)
+library(NbClust)
+pc=Mt.pca$x[,1:100]
+number <- NbClust(pc, distance="euclidean",
+               min.nc=2, max.nc=15, method='kmeans', index='all', alphaBeale = 0.1)
+```
+According to this cluster analysis with kmeans we will us 3 clusters for our further analysis. 
+```{r}
+Mt.hc=hclust(dist(pc,method="euclidean"),method="ward.D2")
+
+plot(Mt.hc, main="Complete Linkage",xlab="",cex=.9)
+```
+With heirarchical clustering we can visualize the 3 clusters as shown above. 
+```{r}
+library(mclust)
+MT.m<-Mclust(pc[,0:10])
+summary(MT.m); MT.m$modelName ; MT.m$G
+```
+Based on this clustering analysis the optimal number of cluster is 9, compared to kmeans giving us 3 as the optimal number of clusters
+```{r}
+#MT.m$classification
+
+plot(MT.m, what=c('classification'),
+       dimens=c(2,3))
+
+table(Mt$Group, MT.m$classification)
+```
+The cluster analysis reveals that all given haplogrous cluster together, other than group F, C, B, and O. 

@@ -1,0 +1,193 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+setwd('C:/Users/Dean/Desktop/University of Idaho/Classes/Fall 2018/STAT 517/Stat517-master/Data')
+happy2015 = read.csv("C:/Users/Dean/Desktop/University of Idaho/Classes/Fall 2018/STAT 517/Stat517-master/Data/World_Happiness_2015.csv", sep = ',', header=T)
+head(happy2015)
+tail(happy2015)
+act_col <- c(2, 4:10) 
+happiness_new <- happy2015[, act_col] 
+#md.pattern(happiness_new)
+happiness_new$Region <- NULL
+happiness_new
+```
+From this we can see the 5 happiest countries are Switzerland, Iceland, Denmark, Norway, and canada as of 2015. 
+The least happy contries are Togo, Burundi, Syria, Benin, and Rwanada. 
+Lets explore further what may be influencing the happiness of nations across the world. 
+```{r}
+library(mice)
+library(corrplot)
+library(factoextra)
+library(FactoMineR)
+```
+
+```{r}
+M <-cor(happiness_new) 
+corrplot(M, method = "ellipse")
+
+happy.pca <- PCA(happiness_new[,-1], graph = F)
+eig.val <- get_eigenvalue(happy.pca) 
+eig.val
+```
+From this correlation plot we can deduce that a nation's GDP may be a large influencer on happiness, seeing as it is highy correlated with all the other factors. 
+```{r}
+fviz_eig(happy.pca, addlabels = TRUE, ylim = c(0, 60), linecolor = "red", barfill = "darkblue", barcolor = "darkblue")
+```
+
+```{r}
+var <- get_pca_var(happy.pca) 
+fviz_pca_var(happy.pca, col.var = "darkblue")
+```
+
+```{r}
+var$contrib
+```
+From this data it seems that GDP, family, and life expectancy are the greatest contributers to PC1, which I do no find surprising. 
+```{r}
+library(NbClust)
+number <- NbClust(happiness_new, distance="euclidean",
+               min.nc=2, max.nc=15, method='kmeans', index='all', alphaBeale = 0.1)
+```
+From our cluster analysis we know that 2 clusters seems to be the optimal number of clusters. We will use this later in our predictive model of happiness ranking. 
+Now we will continue on to a prediction of the happiest countries 
+
+```{r}
+subset <- happy2015[,-(2:3)]
+subset
+
+set.seed(1)
+ind <- sample(nrow(subset),10)
+
+subset[["train"]] <- TRUE
+subset[["train"]][ind] <- FALSE
+train <- subset[subset[["train"]]==TRUE, ]
+test <- subset[subset[["train"]]==FALSE, ]
+```
+
+```{r}
+library("flexclust")
+km = kcca(train[ ,4:10], k=3, kccaFamily("kmeans"))
+g1 <- train[clusters(km) == 1, c(1,2)]  
+g2 <- train[clusters(km) == 2, c(1,2)]
+g3 <- train[clusters(km) == 3, c(1,2)]
+
+g1
+g2
+
+predict(km)
+
+```
+
+```{r}
+h <- happy2015[,-2]
+hh<-h[,-c(2,4:11)]
+hh
+g1 <- merge(hh,g1, by = "Country")
+g2 <- merge(hh,g2, by = "Country")
+g3 <- merge(hh,g3, by = "Country")           
+# who is in the top and bottom groups?
+meang1<-mean(g1$Happiness.Score.x)
+meang2<-mean(g2$Happiness.Score.x)
+meang3<-mean(g3$Happiness.Score.x)
+top <- which.max(c(meang1,meang2,meang3))
+bottom <- which.min(c(meang1,meang2,meang3))
+
+print(paste("Happiest Group is g", top, sep=""))
+print(paste("Least Happy Group is g", bottom, sep=""))
+
+which.max(g3$Happiness.Score.x)
+list(g3$Happiness.Score.x, g3$Country)
+
+which.min(g2$Happiness.Score.x)
+list(g2$Happiness.Score.x, g2$Country)
+
+happy2015
+```
+SO we know the least happy group is G2, while the happiest group is G3. 
+Group 3 seems to be clusted with many European nations and a few in the Americas. While Group 2 consists of many Middle eastern and African nations. 
+
+```{r}
+
+```
+
+
+```{r}
+library(seriation)
+
+x <- as.matrix(happy2015[,-(2:4)])
+x <- x[sample(seq_len(nrow(x))),]
+d <- dist(x)
+o <- seriate(d)
+o
+head(get_order(o), 15)
+pimage(d, main = "Random")
+pimage(d, o, main = "Reordered")
+ cbind(random = criterion(d), reordered = criterion(d, o))
+```
+
+```{r}
+d <- dist(as.matrix(happy2015[,-(2:4)]), method = "euclidean")
+l <- kmeans(d, 3)$cluster
+res <- dissplot(d, labels = l, options = list(main = "Dissimilarity plot - standard"))
+
+
+plot(res, options = list(main = "Seriation - threshold", threshold = 1.5))
+```
+
+From this seriation we can see that there is more orginaztion and the groups can be seen more clearly. 
+```{r}
+orig_matrix <- apply(happy2015[,-(2:4)], 1, rank)
+
+o <- c(
+ seriate(dist(orig_matrix, "minkowski", p = 1), method ="TSP"),
+ seriate(dist(t(orig_matrix), "minkowski", p = 1), method = "TSP")
+ )
+o
+
+table(happy2015[res$order, 1], res$label)[,res$cluster_order]
+
+```
+
+Lets look at the other two years of data
+```{r}
+setwd('C:/Users/Dean/Desktop/University of Idaho/Classes/Fall 2018/STAT 517/Stat517-master/Data')
+happy2016 = read.csv("C:/Users/Dean/Desktop/University of Idaho/Classes/Fall 2018/STAT 517/Stat517-master/Data/World_Happiness_2016.csv", sep = ',', header=T)
+head(happy2016)
+tail(happy2016)
+act_col <- c(2, 4:10) 
+happiness_new1 <- happy2016[, act_col] 
+#md.pattern(happiness_new)
+happiness_new1$Region <- NULL
+happiness_new1
+```
+The following year the top 6 has not changed, but their order has. Denmark has now taken the top spot from Switzerland. 
+
+The least happy countries has not chnaged much either, but now Togo is no longer the least happy nation it is now Burundi. 
+```{r}
+setwd('C:/Users/Dean/Desktop/University of Idaho/Classes/Fall 2018/STAT 517/Stat517-master/Data')
+happy2017 = read.csv("C:/Users/Dean/Desktop/University of Idaho/Classes/Fall 2018/STAT 517/Stat517-master/Data/World_Happiness_2017.csv", sep = ',', header=T)
+head(happy2017)
+tail(happy2017)
+act_col <- c(2, 4:10) 
+happiness_new1 <- happy2016[, act_col] 
+
+happiness_new1$Region <- NULL
+happiness_new1
+```
+Now in 2017 there has been some change to the top 6, Canada has fallen off the top 6, and it is now all European nations, mostly in the Nordic region, other than Iceland. 
+
+The least happy countries in 2017 are all African nations, with Central African Republic being the least happy of all. 
+
+From this data set we can gather that happieness rank heavily depends on GDP, health, and family. This is not surprising since these factors impact someones day to day lives. 
+
+Once such outlier of these factors is China, which ranks high on these 3 factors. However, as shown in the correlation plot, generosity and trust in government have a negative correlation with happiness. So, it appears China's very low scores on these two factors brings their happiness score down quite a bit. 
+
+As far as America is concerned our score has gone down each year, even though our GDP has actually increased. One factor that has also increased is the goverment corruption score. This could be shifting our happiness down significantly. The 2016 election may have brought the happiness down in many groups who do not trust the election was not swayed by outside sources, leading to more distrust in the governmnet. 
+
+Afirca has almost all their countries at the bottom of this ranking. And looking at the data it appears they have both low GDP, postitively correlated with happiness, and low trust in government, negatively correlated. It appears until these factors have imporved Africa will no imporve their citizen's happiness. 
+
