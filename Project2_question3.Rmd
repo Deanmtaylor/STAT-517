@@ -1,0 +1,203 @@
+---
+title: "Text mining the Bible"
+output:
+  html_document:
+    df_print: paged
+Author: Dean Taylor
+---
+```{r}
+library(readr)
+library(tm)
+library(wordcloud)
+library(sentimentr)
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+
+```{r}
+setwd('C:/Users/Dean/Desktop/University of Idaho/Classes/Fall 2018/STAT 517/Stat517-master/Data')
+ASV = read.csv("C:/Users/Dean/Desktop/University of Idaho/Classes/Fall 2018/STAT 517/Stat517-master/Data/bible_asv.csv", sep = ',', header=T)
+
+
+dim(ASV)
+head(ASV)
+attach(ASV)
+
+text.Book=c()
+for (i in 1:66) {
+  text.Book[i]=paste(text[Books==as.character(unique(Books)[i])],collapse = " ")
+}
+
+ASV_Books=data.frame(Books=unique(Books),Testaments=as.factor(c(rep("OT",39),rep("NT",27))), 
+                     Sections=as.factor(c(rep("Law",5),rep("History",12),rep("Wisdom",5),rep("Prophets",17),rep("Gospels",5),rep("Paul",13),rep("Apostles",9))),
+                     text=text.Book,
+                     doc_id=as.factor(1:66))
+attach(ASV_Books)
+dim(ASV_Books)
+head(ASV_Books)
+```
+There are a total of 66 books in the bible, with 39 in the old testament and 27 in the new testament. There are also 7 sections, Law, History, Wisodom, Prophets, Gospels, Paul, and Apostles. We are going to use this data set to do text mining and a cluster analysis to see how these books group with unsupervised learning techniques. 
+```{r}
+library(tm)
+corpus = Corpus(DataframeSource(ASV_Books))
+corpus
+```
+We need to complete some preprocessing such as making all letters lowercase letters, removing spaces, removing punctuation and removing numbers. 
+```{r}
+N<-tm_map(corpus, stripWhitespace)
+N <- tm_map(N, content_transformer(tolower))
+tm_map(N, stemDocument)
+```
+                
+```{r}
+DTM <- DocumentTermMatrix(N)
+
+DTM
+dim(DTM)
+```
+
+```{r}
+library(slam)
+freqs <- col_sums(DTM)
+words <- colnames(DTM)
+wordlist <- data.frame(words, freqs)
+wordIndexes <- order(wordlist[, "freqs"], decreasing = TRUE)
+wordlist <- wordlist[wordIndexes, ]
+head(wordlist, 50)
+```
+Here is a list of the 50 most frequent words in the entire bible, some of these may not help with our analysis so we will remove them later on. 
+```{r}
+plot(wordlist$freqs , type = "l", lwd=2, main = "Rank frequency Plot", xlab="Rank", ylab ="Frequency")
+```
+
+```{r}
+plot(wordlist$freqs , type = "l", log="xy", lwd=2, main = "Rank-Frequency Plot", xlab="log-Rank", ylab ="log-Frequency")
+```
+
+```{r}
+ASV_Books$doc_id <- ASV_Books$Books
+myCorpus <- Corpus(DataframeSource(ASV_Books))
+myCorpus = tm_map(myCorpus, content_transformer(tolower))
+myCorpus = tm_map(myCorpus, removePunctuation)
+myCorpus = tm_map(myCorpus, removeNumbers)
+```
+
+```{r}
+removed = c("thou", "thee", "thy", "hath", "hast", "saith", "shal", "thine", "the", "and", "unto", "for", "his", "that")
+
+myCorpus = tm_map(myCorpus, removeWords,c(stopwords("english"), 
+
+                              stopwords('SMART'), removed))
+
+
+
+myDtm = TermDocumentMatrix(myCorpus,
+
+                           control = list(minWordLength = 1))
+```
+
+```{r}
+m <- as.matrix(myDtm)
+v <- sort(rowSums(m), decreasing=TRUE)
+myNames <- names(v)
+d <- data.frame(word=myNames, freq=v)
+wctop <-wordcloud(d$word, d$freq, min.freq=500, colors=brewer.pal(9,"Set1"))
+```
+Here is a word cloud of the entire bible with all 66 books. Clearly "god" and "Jehovah" are the two most frequent words in all books. 
+```{r}
+ggplot(d[1:10,], aes(x=reorder(word,freq), y=freq)) +
+  geom_bar(stat="identity", fill="gold", colour="black") +
+  coord_flip() + theme_bw(base_size = 16) +
+  labs(title="Most frequent words in Bible", x="Word", y="Frequency")
+```
+Here is another plot showing the word frequency. 
+```{r}
+
+```
+
+```{r}
+library(mclust)
+library(NbClust)
+library(textmineR)
+dtm <- CreateDtm(doc_vec = ASV_Books$text, # character vector of documents
+                 doc_names = ASV_Books$Books, # document names
+                 ngram_window = c(1, 10), # minimum and maximum n-gram length
+                 stopword_vec = c(tm::stopwords("english"), # stopwords from tm
+                                  tm::stopwords("SMART")), # this is the default value
+                 lower = TRUE, # lowercase - this is the default value
+                 remove_punctuation = TRUE, # punctuation - this is the default
+                 remove_numbers = TRUE, # numbers - this is the default
+                 verbose = FALSE, # Turn off status bar for this demo
+                 cpus = 2) # default is all available cpus on the system
+
+tf_mat <- TermDocFreq(dtm)
+```
+
+```{r}
+tfidf <- t(dtm[ , tf_mat$term ]) * tf_mat$idf
+tfidf <- t(tfidf)
+csim <- tfidf / sqrt(rowSums(tfidf * tfidf))
+csim <- csim %*% t(csim)
+cdist <- as.dist(1 - csim)
+```
+
+```{r}
+hc <- hclust(cdist, "ward.D")
+
+clustering <- cutree(hc, 10)
+
+plot(hc, main = "Hierarchical clustering of 100 NIH grant abstracts",
+     ylab = "", xlab = "", yaxt = "n")
+```
+A hclust shows that the bible can broken down into 2 groups, between the old testament and the new testament. 
+```{r}
+bible <-Mclust(cdist)
+
+bible$classification
+bible$modelName
+```
+If we used model based clustering with the mclust package they say there are 9 groups. 
+```{r}
+kmean.bible2<-kmeans(cdist, 2)
+kmean.bible3<-kmeans(cdist, 7)
+
+kmean.bible2$cluster
+kmean.bible2$size
+
+kmean.bible3$cluster
+ASV_Books[,1:3]
+```
+If we use Kmeans and decide how many groups there arewe get some interesting results.The model correctly clustered all the new testament books together, however t clsutered 12 old testament books in the new testament cluster.
+
+When we create a cluster based on the seven types of books, law, history, prophet etc...we see less clear results. Many of the books have been misclassified. To me this means that its easier for the text mining based model to tell the difference between the new and old testament, since they were written so far apart. However, it is harder for the model to tell the difference between the types of books. 
+
+```{r}
+p_words <- colSums(dtm) / sum(dtm)
+
+cluster_words <- lapply(unique(clustering), function(x){
+  rows <- dtm[ clustering == x , ]
+  
+  # for memory's sake, drop all words that don't appear in the cluster
+  rows <- rows[ , colSums(rows) > 0 ]
+  
+  colSums(rows) / sum(rows) - p_words[ colnames(rows) ]
+})
+
+```
+
+```{r}
+cluster_summary <- data.frame(cluster = unique(clustering),
+                              size = as.numeric(table(clustering)),
+                              top_words = sapply(cluster_words, function(d){
+                                paste(
+                                  names(d)[ order(d, decreasing = TRUE) ][ 1:100 ], 
+                                  collapse = ", ")
+                              }),
+                              stringsAsFactors = FALSE)
+
+cluster_summary
+```
+Above are the top 10 words in each cluster. Many of the words are present in each group, so most likely it wasnt the top words that clustered the groups but rather less used words. 
